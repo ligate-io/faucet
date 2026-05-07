@@ -1,0 +1,56 @@
+[package]
+name = "ligate-faucet"
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+description = "Devnet faucet for Ligate Chain. Rate-limited $LGT drip from a hot signer key."
+repository = "https://github.com/ligate-io/faucet"
+homepage = "https://ligate.io"
+authors = ["Ligate Labs <hello@ligate.io>"]
+rust-version = "1.93"
+publish = false
+
+[[bin]]
+name = "ligate-faucet"
+path = "src/main.rs"
+
+[dependencies]
+# HTTP server
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
+# JSON + config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Rate limiting (in-memory)
+dashmap = "6"
+
+# Time
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+# Hex encoding for signer key
+hex = "0.4"
+
+# HTTP client for chain RPC submission
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
