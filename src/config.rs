@@ -18,6 +18,10 @@ pub struct Config {
     pub chain_rpc: String,
     pub signer_key: String,
     pub drip_amount: u128,
+    pub chain_id: u64,
+    pub chain_hash: [u8; 32],
+    pub lgt_token_id_hex: String,
+    pub starting_nonce: u64,
     rate_limit_secs: u64,
 }
 
@@ -53,7 +57,50 @@ impl Config {
             .context("FAUCET_RATE_LIMIT_SECS must be a non-negative integer (seconds)")?
             .unwrap_or(DEFAULT_RATE_LIMIT_SECS);
 
-        Ok(Self { bind, chain_rpc, signer_key, drip_amount, rate_limit_secs })
+        // Chain identity for transaction construction. These come from
+        // the chain's `/v1/rollup/info` endpoint at runtime; we capture
+        // them as env vars at boot for predictability. If the operator
+        // re-deploys against a new chain, env-var update + restart is
+        // cleaner than dynamic re-fetch.
+        let chain_id = std::env::var("FAUCET_CHAIN_ID")
+            .context("FAUCET_CHAIN_ID is required (numeric, from chain_state.json)")?
+            .parse::<u64>()
+            .context("FAUCET_CHAIN_ID must be u64")?;
+
+        let chain_hash_hex = std::env::var("FAUCET_CHAIN_HASH")
+            .context("FAUCET_CHAIN_HASH is required (64-char hex from /v1/rollup/info)")?;
+        if chain_hash_hex.len() != 64 {
+            return Err(anyhow!(
+                "FAUCET_CHAIN_HASH must be 64 hex chars, got {}",
+                chain_hash_hex.len()
+            ));
+        }
+        let chain_hash_bytes = hex::decode(&chain_hash_hex)
+            .context("FAUCET_CHAIN_HASH must be valid hex")?;
+        let mut chain_hash = [0u8; 32];
+        chain_hash.copy_from_slice(&chain_hash_bytes);
+
+        let lgt_token_id_hex = std::env::var("FAUCET_LGT_TOKEN_ID")
+            .context("FAUCET_LGT_TOKEN_ID is required (token id hex from bank.json)")?;
+
+        let starting_nonce = std::env::var("FAUCET_STARTING_NONCE")
+            .ok()
+            .map(|s| s.parse::<u64>())
+            .transpose()
+            .context("FAUCET_STARTING_NONCE must be u64")?
+            .unwrap_or(0);
+
+        Ok(Self {
+            bind,
+            chain_rpc,
+            signer_key,
+            drip_amount,
+            chain_id,
+            chain_hash,
+            lgt_token_id_hex,
+            starting_nonce,
+            rate_limit_secs,
+        })
     }
 
     pub fn rate_limit_window(&self) -> Duration {

@@ -56,8 +56,22 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::from_env().context("loading config from env")?;
     let bind: SocketAddr = config.bind.parse().context("parsing FAUCET_BIND as SocketAddr")?;
-    let signer = signer::Signer::from_hex_key(&config.signer_key, config.chain_rpc.clone())
-        .context("loading signer key")?;
+
+    // Parse the LGT token id from hex into the SDK's TokenId.
+    let token_id_bytes = hex::decode(&config.lgt_token_id_hex)
+        .context("FAUCET_LGT_TOKEN_ID must be valid hex")?;
+    let token_id = sov_bank::TokenId::try_from(token_id_bytes.as_slice())
+        .map_err(|e| anyhow::anyhow!("FAUCET_LGT_TOKEN_ID wrong shape: {e:?}"))?;
+
+    let signer = signer::Signer::new(
+        &config.signer_key,
+        config.chain_rpc.clone(),
+        config.chain_id,
+        config.chain_hash,
+        token_id,
+        config.starting_nonce,
+    )
+    .context("loading signer")?;
     let rate_limiter = ratelimit::RateLimiter::new(config.rate_limit_window());
 
     let state = AppState {

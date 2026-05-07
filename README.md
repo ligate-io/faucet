@@ -3,14 +3,13 @@
 Devnet faucet for Ligate Chain. Rate-limited HTTP service that drips
 `$LGT` to addresses on `ligate-devnet-1` and onward.
 
-> **Status: scaffold, not yet fully wired to chain submission.**
->
-> The HTTP shape, rate limiter, config, and deploy story are all
-> functional. The actual `bank.transfer` submission to the chain is
-> stubbed pending a `transfer` helper landing in
-> [`ligate-client`](https://github.com/ligate-io/ligate-chain/tree/main/crates/client-rs).
-> Tracking: chain-side
-> [#95](https://github.com/ligate-io/ligate-chain/issues/95).
+> **Status: real chain submission wired.** Builds `bank.transfer`
+> calls, signs against the chain's `CHAIN_HASH`, submits via
+> `ligate_client::submit::Submitter`. Tracking:
+> [chain #95](https://github.com/ligate-io/ligate-chain/issues/95)
+> (faucet itself) and
+> [chain #240](https://github.com/ligate-io/ligate-chain/issues/240)
+> (the underlying SDK pipeline this consumes).
 
 ## Why a separate faucet service
 

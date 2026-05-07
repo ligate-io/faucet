@@ -92,10 +92,17 @@ pub async fn drip(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse { error: msg, retry_after_secs: None }),
             ),
-            SignerError::NotWired => (
-                StatusCode::SERVICE_UNAVAILABLE,
+            SignerError::InvalidSignerKey(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: e.to_string(),
+                    error: format!("operator misconfig: {msg}"),
+                    retry_after_secs: None,
+                }),
+            ),
+            SignerError::SubmitFailed(msg) => (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: format!("chain submission failed: {msg}"),
                     retry_after_secs: None,
                 }),
             ),
