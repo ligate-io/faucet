@@ -28,9 +28,8 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         let bind = std::env::var("FAUCET_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_string());
-        let chain_rpc = std::env::var("FAUCET_CHAIN_RPC").context(
-            "FAUCET_CHAIN_RPC is required (e.g. https://rpc.ligate.io)",
-        )?;
+        let chain_rpc = std::env::var("FAUCET_CHAIN_RPC")
+            .context("FAUCET_CHAIN_RPC is required (e.g. https://rpc.ligate.io)")?;
         let signer_key = std::env::var("FAUCET_SIGNER_KEY")
             .context("FAUCET_SIGNER_KEY is required (64-char hex private key)")?;
         if signer_key.len() != 64 {
@@ -75,8 +74,8 @@ impl Config {
                 chain_hash_hex.len()
             ));
         }
-        let chain_hash_bytes = hex::decode(&chain_hash_hex)
-            .context("FAUCET_CHAIN_HASH must be valid hex")?;
+        let chain_hash_bytes =
+            hex::decode(&chain_hash_hex).context("FAUCET_CHAIN_HASH must be valid hex")?;
         let mut chain_hash = [0u8; 32];
         chain_hash.copy_from_slice(&chain_hash_bytes);
 

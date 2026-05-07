@@ -7,17 +7,12 @@
 //! - `GET /faucet/status` rate-limit window, drip amount, drips so
 //!   far. No auth, no per-IP info exposure.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
 use crate::ratelimit::RateCheck;
 use crate::signer::SignerError;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct DripRequest {
@@ -90,7 +85,10 @@ pub async fn drip(
         .map_err(|e| match e {
             SignerError::InvalidAddress(msg) => (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: msg, retry_after_secs: None }),
+                Json(ErrorResponse {
+                    error: msg,
+                    retry_after_secs: None,
+                }),
             ),
             SignerError::InvalidSignerKey(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

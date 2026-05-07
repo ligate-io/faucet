@@ -28,7 +28,10 @@ pub enum RateCheck {
 
 impl RateLimiter {
     pub fn new(window: Duration) -> Self {
-        Self { last_drip: DashMap::new(), window }
+        Self {
+            last_drip: DashMap::new(),
+            window,
+        }
     }
 
     /// Check whether an address is allowed to drip right now. Does
@@ -42,7 +45,9 @@ impl RateLimiter {
                 if elapsed >= self.window {
                     RateCheck::Allowed
                 } else {
-                    RateCheck::Blocked { retry_after: self.window - elapsed }
+                    RateCheck::Blocked {
+                        retry_after: self.window - elapsed,
+                    }
                 }
             }
             None => RateCheck::Allowed,

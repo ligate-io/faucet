@@ -176,13 +176,11 @@ impl Signer {
         // Borsh-encode the signed tx + wrap with the chain's
         // RollupAuthenticator. Output is the bytes the sequencer
         // expects.
-        let inner_bytes = borsh::to_vec(&signed).map_err(|e| {
-            SignerError::SubmitFailed(format!("encoding signed tx: {e}"))
-        })?;
+        let inner_bytes = borsh::to_vec(&signed)
+            .map_err(|e| SignerError::SubmitFailed(format!("encoding signed tx: {e}")))?;
         let raw_tx = sov_modules_api::RawTx { data: inner_bytes };
-        let baked = <ChainRuntime as sov_modules_api::Runtime<S>>::Auth::encode_with_standard_auth(
-            raw_tx,
-        );
+        let baked =
+            <ChainRuntime as sov_modules_api::Runtime<S>>::Auth::encode_with_standard_auth(raw_tx);
 
         // Submit.
         let tx_hash = self
@@ -202,6 +200,13 @@ impl Signer {
 mod tests {
     use super::*;
 
+    /// Zeroed-out token id for unit tests. The signer doesn't actually
+    /// touch the token id during construction, so the value is
+    /// arbitrary; we just need _some_ `TokenId` to plug in.
+    fn zero_token_id() -> TokenId {
+        TokenId::from([0u8; 32])
+    }
+
     #[test]
     fn rejects_too_short_key() {
         let err = Signer::new(
@@ -209,7 +214,7 @@ mod tests {
             "http://localhost:12346".into(),
             1,
             [0u8; 32],
-            TokenId::default(),
+            zero_token_id(),
             0,
         )
         .unwrap_err();
@@ -223,7 +228,7 @@ mod tests {
             "http://localhost:12346".into(),
             1,
             [0u8; 32],
-            TokenId::default(),
+            zero_token_id(),
             0,
         )
         .unwrap_err();
@@ -238,7 +243,7 @@ mod tests {
             "http://localhost:12346".into(),
             1,
             [0u8; 32],
-            TokenId::default(),
+            zero_token_id(),
             0,
         )
         .unwrap();

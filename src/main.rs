@@ -26,7 +26,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use axum::{routing::{get, post}, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
@@ -55,11 +58,14 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = config::Config::from_env().context("loading config from env")?;
-    let bind: SocketAddr = config.bind.parse().context("parsing FAUCET_BIND as SocketAddr")?;
+    let bind: SocketAddr = config
+        .bind
+        .parse()
+        .context("parsing FAUCET_BIND as SocketAddr")?;
 
     // Parse the LGT token id from hex into the SDK's TokenId.
-    let token_id_bytes = hex::decode(&config.lgt_token_id_hex)
-        .context("FAUCET_LGT_TOKEN_ID must be valid hex")?;
+    let token_id_bytes =
+        hex::decode(&config.lgt_token_id_hex).context("FAUCET_LGT_TOKEN_ID must be valid hex")?;
     let token_id = sov_bank::TokenId::try_from(token_id_bytes.as_slice())
         .map_err(|e| anyhow::anyhow!("FAUCET_LGT_TOKEN_ID wrong shape: {e:?}"))?;
 
