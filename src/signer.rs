@@ -80,6 +80,9 @@ pub struct DripReceipt {
 pub struct Signer {
     private_key: SovPrivateKey,
     submitter: Submitter,
+    /// Chain RPC base URL with the `/v1` API prefix guaranteed.
+    /// Used for HTTP polling on `/ledger/txs/{hash}` after submit.
+    chain_rpc_with_v1: String,
     chain_hash: [u8; 32],
     chain_id: u64,
     lgt_token_id: TokenId,
@@ -121,9 +124,22 @@ impl Signer {
         let private_key = SovPrivateKey::try_from(key_bytes)
             .map_err(|e| SignerError::InvalidSignerKey(format!("key shape: {e:?}")))?;
 
+        // Normalise the chain RPC URL to always end in `/v1`.
+        // FAUCET_CHAIN_RPC accepts either `https://rpc.ligate.io` or
+        // `https://rpc.ligate.io/v1`; the chain mounts its API under
+        // `/v1/...` so the base passed to the SDK must include the
+        // prefix.
+        let trimmed = chain_rpc.trim_end_matches('/');
+        let chain_rpc_with_v1 = if trimmed.ends_with("/v1") {
+            trimmed.to_string()
+        } else {
+            format!("{trimmed}/v1")
+        };
+
         Ok(Self {
             private_key,
-            submitter: Submitter::new_unchecked(&chain_rpc),
+            submitter: Submitter::new_unchecked(&chain_rpc_with_v1),
+            chain_rpc_with_v1,
             chain_hash,
             chain_id,
             lgt_token_id,
@@ -184,17 +200,53 @@ impl Signer {
         let signed_bytes = borsh::to_vec(&signed)
             .map_err(|e| SignerError::SubmitFailed(format!("encoding signed tx: {e}")))?;
 
-        // Submit.
+        // Submit. `wait_for_inclusion = false` because the SDK's
+        // `wait_for_tx_processing` uses a WebSocket subscription that
+        // hits a URL-parse bug in our setup (`invalid port value`,
+        // see ligate-cli#8). We do an HTTP poll on
+        // `/ledger/txs/{hash}` below instead.
         let tx_hash = self
             .submitter
-            .submit_raw_tx(signed_bytes, /* wait */ true)
+            .submit_raw_tx(signed_bytes, /* wait */ false)
             .await
             .map_err(|e| SignerError::SubmitFailed(format!("submit: {e:#}")))?;
+        let tx_hash_str = tx_hash.to_string();
+
+        // Poll for inclusion. Returns once the chain has indexed the
+        // tx (success or failure both count) or times out. The drip
+        // request is held open until inclusion so the user gets a
+        // useful response shape (`tx_hash` they can verify against
+        // the explorer immediately, not eventually).
+        self.wait_for_inclusion(&tx_hash_str).await?;
 
         Ok(DripReceipt {
-            tx_hash: tx_hash.to_string(),
+            tx_hash: tx_hash_str,
             amount_nano,
         })
+    }
+
+    /// Poll the chain via `GET /ledger/txs/{tx_hash}` until the
+    /// transaction has been indexed. See ligate-cli#8 for context;
+    /// equivalent to the cli's helper of the same name.
+    async fn wait_for_inclusion(&self, tx_hash: &str) -> Result<(), SignerError> {
+        const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+        const MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+        let url = format!("{}/ledger/txs/{tx_hash}", self.chain_rpc_with_v1);
+        let started = std::time::Instant::now();
+        loop {
+            if started.elapsed() > MAX_WAIT {
+                return Err(SignerError::SubmitFailed(format!(
+                    "timed out after {:?} waiting for tx {tx_hash} to be included; \
+                     drip may still land — check {url} to verify",
+                    MAX_WAIT
+                )));
+            }
+            if self.submitter.inner().http_get(&url).await.is_ok() {
+                return Ok(());
+            }
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
     }
 }
 
