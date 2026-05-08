@@ -10,6 +10,8 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Permissive CORS on every public endpoint (`tower_http::cors::CorsLayer::permissive()` mounted on the axum router). Browsers from arbitrary origins (Mneme wallet, Themisra demo pages, partner web apps) can now POST to `/faucet` without the request being blocked at preflight. v0 devnet is "anyone can drip from any browser"; testnet+ should tighten the origin allow-list. Closes the gap that would have surfaced as `Access-Control-Allow-Origin` errors in partner browser consoles minutes after launch.
+- Startup drip-budget sanity check. After loading the signer, the faucet queries its own LGT balance via the SDK's `get_balance_for_holder` and refuses to start if the balance covers fewer than `FAUCET_MIN_DRIPS_BUDGET` drips at the configured `FAUCET_DRIP_AMOUNT`. Default 100 drips; set to `0` to skip the check entirely. Catches the typo class "operator set `FAUCET_DRIP_AMOUNT` to whole-LGT instead of nano-LGT (1e9× too much) and would drain the hot key in a handful of drips" before drips actually start. Bounded retry (5× with 2s backoff) handles the systemd-startup race where the chain is reachable but hasn't indexed the faucet's pre-funded balance yet. New `Signer::address()` and `Signer::query_self_balance()` methods power the check; both are useful elsewhere (operator log lines, future health endpoints).
 - `.github/workflows/release.yml` — tagged-release workflow that
   cross-compiles `ligate-faucet` for the four target platforms
   operators run on (linux x86_64 / arm64, darwin arm64 / amd64),
