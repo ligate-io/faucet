@@ -10,6 +10,18 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `.github/workflows/release.yml` — tagged-release workflow that
+  cross-compiles `ligate-faucet` for the four target platforms
+  operators run on (linux x86_64 / arm64, darwin arm64 / amd64),
+  packages each as a `.tar.gz` with SHA-256 checksum, and attaches
+  them to a GitHub Release with the `## [Unreleased]` section of this
+  CHANGELOG as release notes. Triggered on `v*` tag pushes;
+  `workflow_dispatch` runs the build matrix as a dry-run without
+  publishing. Mirrors `ligate-chain`'s release workflow exactly so
+  operators downloading both binaries get a uniform install
+  experience. Drops "compile Rust on the GCP VM" from the deploy
+  runbook (`ligate-chain/docs/development/public-devnet-deploy.md`)
+  for the faucet leg.
 - Real chain submission. Replaced the stubbed `signer.rs` with a
   full `bank.transfer` pipeline: builds `RuntimeCall::Bank(Transfer)`,
   wraps in `UnsignedTransaction`, signs against the chain's
