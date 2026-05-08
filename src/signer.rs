@@ -36,7 +36,7 @@ use sov_bank::{Amount, CallMessage as BankCall, Coins, TokenId};
 use sov_modules_api::capabilities::UniquenessData;
 use sov_modules_api::execution_mode::Native;
 use sov_modules_api::transaction::{PriorityFeeBips, UnsignedTransaction};
-use sov_modules_api::{CryptoSpec, Spec};
+use sov_modules_api::{CryptoSpec, PrivateKey, PublicKey, Spec};
 use thiserror::Error;
 
 /// Concrete spec for transaction construction.
@@ -145,6 +145,37 @@ impl Signer {
             lgt_token_id,
             nonce: AtomicU64::new(starting_nonce),
         })
+    }
+
+    /// The faucet's own `lig1...` address derived from `private_key`.
+    /// Used by the startup drip-budget check + for log lines so
+    /// operators can `curl` the address's balance.
+    pub fn address(&self) -> String {
+        let pubkey = self.private_key.pub_key();
+        let credential_id = pubkey.credential_id();
+        SovAddress::from(credential_id).to_string()
+    }
+
+    /// Query the chain for the faucet's own LGT balance (nano-LGT).
+    ///
+    /// Used by the startup drip-budget sanity check
+    /// (`FAUCET_MIN_DRIPS_BUDGET` in main.rs). Goes through the SDK's
+    /// `get_balance_for_holder` so the URL shape stays in lockstep
+    /// with what the rest of the chain client uses.
+    ///
+    /// Returns the balance as raw `u128` (nano-LGT), so the caller
+    /// can divide by drip amount without an `Amount`-newtype roundtrip.
+    pub async fn query_self_balance(&self) -> Result<u128, anyhow::Error> {
+        use anyhow::Context;
+        let addr = self.address();
+        let amount = self
+            .submitter
+            .inner()
+            .get_balance_for_holder::<S>(&addr, &self.lgt_token_id)
+            .await
+            .with_context(|| format!("querying LGT balance for {addr}"))?;
+        // `Amount` is a newtype around u128; pull the inner.
+        Ok(amount.0)
     }
 
     /// Sign and submit a `bank.transfer` of `amount_nano` from the

@@ -18,20 +18,27 @@
 //!   (1 `$LGT` = 1e9 nano).
 //! - `FAUCET_RATE_LIMIT_SECS` (default `86400`): cooldown per
 //!   recipient address (24 hours).
+//! - `FAUCET_MIN_DRIPS_BUDGET` (default `100`): startup sanity check.
+//!   The faucet refuses to start if its current LGT balance covers
+//!   fewer than this many drips at the configured `FAUCET_DRIP_AMOUNT`.
+//!   Catches "set drip to 1000 LGT thinking it's nano" typos before
+//!   they drain the hot key. Set to `0` to disable.
 //! - `RUST_LOG` (default `info,ligate_faucet=info`).
 //!
 //! Tracking issue: <https://github.com/ligate-io/ligate-chain/issues/95>.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use axum::{
     routing::{get, post},
     Router,
 };
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::info;
+use tracing::{info, warn};
 
 mod config;
 mod handlers;
@@ -78,6 +85,55 @@ async fn main() -> anyhow::Result<()> {
         config.starting_nonce,
     )
     .context("loading signer")?;
+
+    info!(faucet_address = %signer.address(), "signer loaded");
+
+    // Startup drip-budget sanity check.
+    //
+    // Catches the typo class "operator set FAUCET_DRIP_AMOUNT to whole
+    // LGT instead of nano-LGT (1e9× too much) and would drain the hot
+    // key in a handful of drips." Refuses to start if current balance
+    // covers fewer than `FAUCET_MIN_DRIPS_BUDGET` drips at the
+    // configured `FAUCET_DRIP_AMOUNT`. Default 100; set to 0 to skip.
+    //
+    // The chain query uses the SDK's `get_balance_for_holder` and so
+    // assumes the chain at `FAUCET_CHAIN_RPC` is reachable. The
+    // systemd unit's `Requires=ligate-node.service` ordering means
+    // that's true on a fresh GCP VM boot. We retry briefly to handle
+    // the race where the chain is reachable but hasn't indexed the
+    // faucet's pre-funded balance yet.
+    let min_drips_budget = std::env::var("FAUCET_MIN_DRIPS_BUDGET")
+        .ok()
+        .map(|s| s.parse::<u64>())
+        .transpose()
+        .context("FAUCET_MIN_DRIPS_BUDGET must be a non-negative integer")?
+        .unwrap_or(100);
+
+    if min_drips_budget > 0 {
+        let drip_amount = config.drip_amount;
+        let balance = query_balance_with_retry(&signer, 5, Duration::from_secs(2))
+            .await
+            .context(
+                "startup drip-budget check failed; \
+                 set FAUCET_MIN_DRIPS_BUDGET=0 to skip if the chain is intentionally unreachable",
+            )?;
+        let budget = balance / drip_amount;
+        if (budget as u64) < min_drips_budget {
+            anyhow::bail!(
+                "signer balance ({balance} nano-LGT) covers only {budget} drips at \
+                 {drip_amount} nano-LGT/drip; minimum is {min_drips_budget} \
+                 (FAUCET_MIN_DRIPS_BUDGET). Either fund the signer or lower \
+                 FAUCET_DRIP_AMOUNT before starting."
+            );
+        }
+        info!(
+            balance,
+            drip_amount, budget, min_drips_budget, "drip-budget check OK"
+        );
+    } else {
+        warn!("FAUCET_MIN_DRIPS_BUDGET=0 — skipping startup balance check");
+    }
+
     let rate_limiter = ratelimit::RateLimiter::new(config.rate_limit_window());
 
     let state = AppState {
@@ -86,11 +142,19 @@ async fn main() -> anyhow::Result<()> {
         signer: Arc::new(signer),
     };
 
+    // Permissive CORS for v0 devnet — partner web apps (Mneme,
+    // Themisra, design-partner sites) hit `faucet.ligate.io/faucet`
+    // from arbitrary origins. Tighten the origin allow-list at
+    // testnet+; for devnet, "anyone can hit the faucet from any
+    // browser" matches the rest of the public-permissionless story.
+    let cors = CorsLayer::permissive();
+
     let app = Router::new()
         .route("/health", get(handlers::health))
         .route("/faucet", post(handlers::drip))
         .route("/faucet/status", get(handlers::status))
         .layer(TraceLayer::new_for_http())
+        .layer(cors)
         .with_state(state);
 
     info!(?bind, "ligate-faucet starting");
@@ -101,4 +165,28 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await.context("axum serve")?;
 
     Ok(())
+}
+
+/// Query the signer's own LGT balance with bounded retries.
+///
+/// On a fresh GCP VM boot the chain may be reachable but still
+/// indexing genesis when the faucet starts. A short retry loop
+/// avoids flapping the systemd unit through one or two restarts.
+async fn query_balance_with_retry(
+    signer: &signer::Signer,
+    max_attempts: u32,
+    backoff: Duration,
+) -> anyhow::Result<u128> {
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 0..max_attempts {
+        match signer.query_self_balance().await {
+            Ok(b) => return Ok(b),
+            Err(e) => {
+                warn!(?e, attempt, "balance query failed; retrying");
+                last_err = Some(e);
+                tokio::time::sleep(backoff).await;
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("balance query failed with no error captured")))
 }
