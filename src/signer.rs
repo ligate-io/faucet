@@ -12,10 +12,12 @@
 //! 3. Sign: `unsigned.sign(&private_key, &chain_hash)` returns a
 //!    `Transaction`. The signature binds to `chain_hash` so the same
 //!    private key produces a different signature on each chain id.
-//! 4. Borsh-encode the signed transaction, wrap in `RawTx { data }`,
-//!    feed to `Auth::encode_with_standard_auth(raw_tx)` which returns
-//!    a `FullyBakedTx`. The bytes inside are what the sequencer
-//!    accepts.
+//! 4. Borsh-encode the signed transaction. The chain's
+//!    `POST /v1/sequencer/txs` handler wraps the body in
+//!    `AuthenticatorInput::Standard(RawTx { data })` server-side, so
+//!    we do NOT pre-wrap on the client. (Doing so double-wraps and
+//!    the chain rejects with `Cannot decompress Edwards point`.
+//!    See `ligate-chain#245`.)
 //! 5. Submit via `Submitter::submit_raw_tx`.
 //!
 //! Everything except step 1's `RuntimeCall` construction is generic
@@ -31,7 +33,7 @@ use ligate_client::submit::Submitter;
 use ligate_rollup::MockRollupSpec;
 use ligate_stf::runtime::RuntimeCall;
 use sov_bank::{Amount, CallMessage as BankCall, Coins, TokenId};
-use sov_modules_api::capabilities::{TransactionAuthenticator, UniquenessData};
+use sov_modules_api::capabilities::UniquenessData;
 use sov_modules_api::execution_mode::Native;
 use sov_modules_api::transaction::{PriorityFeeBips, UnsignedTransaction};
 use sov_modules_api::{CryptoSpec, Spec};
@@ -173,19 +175,19 @@ impl Signer {
         // on this chain id.
         let signed = unsigned.sign(&self.private_key, &self.chain_hash);
 
-        // Borsh-encode the signed tx + wrap with the chain's
-        // RollupAuthenticator. Output is the bytes the sequencer
-        // expects.
-        let inner_bytes = borsh::to_vec(&signed)
+        // Borsh-encode the signed `Transaction`. The chain's
+        // `POST /v1/sequencer/txs` handler accepts the inner signed tx
+        // bytes directly and wraps them in `AuthenticatorInput::Standard`
+        // server-side (see `sov-sequencer::rest_api::axum_accept_tx`).
+        // Pre-wrapping here would double-wrap and the chain would
+        // reject with "Cannot decompress Edwards point" (chain #245).
+        let signed_bytes = borsh::to_vec(&signed)
             .map_err(|e| SignerError::SubmitFailed(format!("encoding signed tx: {e}")))?;
-        let raw_tx = sov_modules_api::RawTx { data: inner_bytes };
-        let baked =
-            <ChainRuntime as sov_modules_api::Runtime<S>>::Auth::encode_with_standard_auth(raw_tx);
 
         // Submit.
         let tx_hash = self
             .submitter
-            .submit_raw_tx(baked.data.to_vec(), /* wait */ true)
+            .submit_raw_tx(signed_bytes, /* wait */ true)
             .await
             .map_err(|e| SignerError::SubmitFailed(format!("submit: {e:#}")))?;
 
