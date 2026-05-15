@@ -1,6 +1,6 @@
 # ligate-faucet
 
-[![CI](https://github.com/ligate-io/faucet/actions/workflows/ci.yml/badge.svg)](https://github.com/ligate-io/faucet/actions/workflows/ci.yml) [![License: Apache-2.0 OR MIT](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](#license) [![Chain](https://img.shields.io/badge/chain-ligate--devnet--1-A7D28C.svg)](https://github.com/ligate-io/ligate-chain) [![Docs](https://img.shields.io/badge/docs-docs.ligate.io-A7D28C.svg)](https://docs.ligate.io) [![Pre-devnet](https://img.shields.io/badge/status-pre--devnet-E8833A.svg)](#status)
+[![CI](https://github.com/ligate-io/faucet/actions/workflows/ci.yml/badge.svg)](https://github.com/ligate-io/faucet/actions/workflows/ci.yml) [![License: Apache-2.0 OR MIT](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](#license) [![Chain](https://img.shields.io/badge/chain-ligate--devnet--1-A7D28C.svg)](https://github.com/ligate-io/ligate-chain) [![Docs](https://img.shields.io/badge/docs-docs.ligate.io-A7D28C.svg)](https://docs.ligate.io) [![Devnet](https://img.shields.io/badge/status-devnet-A7D28C.svg)](#status)
 
 Devnet faucet for [Ligate Chain](https://github.com/ligate-io/ligate-chain). Rate-limited HTTP service that drips `$LGT` to fresh addresses so anyone can transact.
 
@@ -59,7 +59,7 @@ The faucet runs as its own process (NOT part of `ligate-node`):
 
 ## Status
 
-**Pre-devnet.** `ligate-devnet-1` is targeted for **Q2 2026**. Until then the faucet runs against locally-spun chains. Tracking issue: [`ligate-chain#95`](https://github.com/ligate-io/ligate-chain/issues/95).
+**Devnet.** `ligate-devnet-1` is live. Tracking issue: [`ligate-chain#95`](https://github.com/ligate-io/ligate-chain/issues/95).
 
 The chain submission pipeline is wired to real transactions: builds `bank.transfer`, signs against the chain's `CHAIN_HASH`, submits via `ligate_client::submit::Submitter`. See [`CHANGELOG.md`](CHANGELOG.md).
 
